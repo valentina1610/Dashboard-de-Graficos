@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>TP3 - Dashboard Estadística</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #f9f9f9;
+            padding: 20px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        .chart-box {
+            width: 80%;
+            margin: 30px auto;
+            background: #fff;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+        }
+
+        canvas {
+            width: 100% !important;
+            max-height: 400px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>TP3 – Dashboard de Estadística</h2>
+
+    <div class="chart-box">
+        <h3>Composición de alumnos por nivel</h3>
+        <canvas id="grafAlumnosNivel"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <h3>Asistencia general</h3>
+        <canvas id="grafAsistenciaGeneral"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <h3>Asistencia por curso</h3>
+        <canvas id="grafAsistenciaCurso"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <h3>Evolución anual de asistencia por mes</h3>
+        <canvas id="grafEvolucionAsistencia"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <h3>Calificaciones generales</h3>
+        <canvas id="grafCalificacionesGeneral"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <h3>Calificaciones por curso (aprobados)</h3>
+        <canvas id="grafCalificacionesCurso"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <h3>Estado de comunicados</h3>
+        <canvas id="grafComunicados"></canvas>
+    </div>
+
+    <script>
+        async function fetchData(url) {
+            const res = await fetch(url);
+            const json = await res.json();
+            return json.data;
+        }
+
+        async function cargarDatos() {
+            const [estudiantes, asistencia, historial, calificaciones, comunicados] = await Promise.all([
+                fetchData('https://apidemo.geoeducacion.com.ar/api/testing/estudiantes/1'),
+                fetchData('https://apidemo.geoeducacion.com.ar/api/testing/asistencia/1'),
+                fetchData('https://apidemo.geoeducacion.com.ar/api/testing/historial_asistencia/1'),
+                fetchData('https://apidemo.geoeducacion.com.ar/api/testing/calificaciones/1'),
+                fetchData('https://apidemo.geoeducacion.com.ar/api/testing/comunicados/1')
+            ]);
+
+            // 1. Alumnos por nivel (barra)
+            const niveles = {};
+            estudiantes.forEach(e => {
+                niveles[e.nivel] = (niveles[e.nivel] || 0) + 1;
+            });
+            new Chart(grafAlumnosNivel, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(niveles),
+                    datasets: [{
+                        label: 'Cantidad de alumnos',
+                        data: Object.values(niveles),
+                        backgroundColor: ['#7FB3D5', '#F1948A', '#82E0AA']
+                    }]
+                }
+            });
+
+            // 2. Asistencia general (torta)
+            const total = asistencia.reduce((acc, cur) => {
+                acc.presentes += cur.presentes;
+                acc.ausentes += cur.ausentes;
+                return acc;
+            }, { presentes: 0, ausentes: 0 });
+            new Chart(grafAsistenciaGeneral, {
+                type: 'pie',
+                data: {
+                    labels: ['Presentes', 'Ausentes'],
+                    datasets: [{
+                        data: [total.presentes, total.ausentes],
+                        backgroundColor: ['#58D68D', '#EC7063']
+                    }]
+                }
+            });
+
+            // 3. Asistencia por curso (torta)
+            const cursosNombres = asistencia.map(a => a.curso);
+            const cursosAsistencia = asistencia.map(a => a.presentes);
+            new Chart(grafAsistenciaCurso, {
+                type: 'pie',
+                data: {
+                    labels: cursosNombres,
+                    datasets: [{
+                        data: cursosAsistencia,
+                        backgroundColor: ['#A569BD', '#5DADE2', '#F5B041', '#45B39D', '#CD6155']
+                    }]
+                }
+            });
+
+            // 4. Evolución asistencia mensual (línea)
+            new Chart(grafEvolucionAsistencia, {
+                type: 'line',
+                data: {
+                    labels: historial.map(h => h.mes),
+                    datasets: [{
+                        label: 'Asistencia (%)',
+                        data: historial.map(h => h.asistencia * 100),
+                        borderColor: '#2980B9',
+                        backgroundColor: 'rgba(41, 128, 185, 0.2)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                }
+            });
+
+            // 5. Calificaciones generales (columnas)
+            const totalAprob = calificaciones.reduce((s, c) => s + c.aprobados, 0);
+            const totalDesaprob = calificaciones.reduce((s, c) => s + c.desaprobados, 0);
+            new Chart(grafCalificacionesGeneral, {
+                type: 'bar',
+                data: {
+                    labels: ['Aprobados', 'Desaprobados'],
+                    datasets: [{
+                        label: 'Porcentaje',
+                        data: [totalAprob * 100, totalDesaprob * 100],
+                        backgroundColor: ['#27AE60', '#C0392B']
+                    }]
+                }
+            });
+
+            // 6. Calificaciones por curso - Aprobados (barra)
+            new Chart(grafCalificacionesCurso, {
+                type: 'bar',
+                data: {
+                    labels: calificaciones.map(c => c.curso),
+                    datasets: [{
+                        label: 'Aprobados (%)',
+                        data: calificaciones.map(c => c.aprobados * 100),
+                        backgroundColor: '#2980B9'
+                    }]
+                }
+            });
+
+            // 7. Comunicados (torta)
+            const com = comunicados[0];
+            new Chart(grafComunicados, {
+                type: 'pie',
+                data: {
+                    labels: ['Entregados', 'Pendientes', 'Error'],
+                    datasets: [{
+                        data: [com.entregados, com.pendientes, com.error],
+                        backgroundColor: ['#2ECC71', '#F1C40F', '#E74C3C']
+                    }]
+                }
+            });
+        }
+
+        cargarDatos();
+    </script>
+
+</body>
+
+</html>
